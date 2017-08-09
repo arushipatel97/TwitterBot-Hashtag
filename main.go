@@ -2,7 +2,6 @@ package main
 
 import (
 	"fmt"
-	"net/http"
 	"net/url"
 	"os"
 	"strings"
@@ -29,14 +28,8 @@ func getenv(name string) string {
 	return v
 }
 
-type dummyServer struct {
-}
-
-func (ds dummyServer) ServeHTTP(http.ResponseWriter, *http.Request) {
-}
-
 var first string
-var dur time.Duration
+var dur = time.Second * 10
 
 func main() {
 	app := cli.NewApp()
@@ -90,15 +83,14 @@ func run(first *string) {
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
 
 	api.SetLogger(log)
-	nextTag := findHashtags(api, *first)
-	fmt.Println(nextTag)
+	findHashtags(api, *first)
 
 }
 
-func findHashtags(api *anaconda.TwitterApi, first string) string {
+func findHashtags(api *anaconda.TwitterApi, first string) {
+	fmt.Println("current", first)
 	startTime := time.Now()
 	hashMap := make(map[string]int)
-	dur = time.Second * 10
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first},
 	})
@@ -114,11 +106,17 @@ func findHashtags(api *anaconda.TwitterApi, first string) string {
 			}
 			parseText(t.Text, hashMap)
 			if time.Since(startTime) > dur {
-				return findMaxHashtag(hashMap)
+				nextTag := findMaxHashtag(hashMap, first)
+				if nextTag == "" {
+					nextTag = first
+				}
+				fmt.Println("next", nextTag)
+				stream.Stop()
+				findHashtags(api, nextTag)
 			}
 		}
 	}
-	return ""
+	return
 }
 
 func parseText(text string, hashMap map[string]int) {
@@ -126,16 +124,15 @@ func parseText(text string, hashMap map[string]int) {
 	for _, tag := range parts {
 		if strings.HasPrefix(tag, "#") {
 			hashMap[tag]++
-			fmt.Println(tag)
 		}
 	}
 }
 
-func findMaxHashtag(hashMap map[string]int) string {
+func findMaxHashtag(hashMap map[string]int, first string) string {
 	bestFreq := 0
 	bestStr := ""
 	for tag := range hashMap {
-		if hashMap[tag] > bestFreq {
+		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) {
 			bestStr = tag
 			bestFreq = hashMap[tag]
 		}
