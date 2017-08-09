@@ -36,10 +36,11 @@ func getenv(name string) string {
 
 //block type for linked list
 type hashTag struct {
-	tag  string
-	freq int
-	next *hashTag
-	prev *hashTag
+	tag   string
+	freq  int
+	total int
+	next  *hashTag
+	prev  *hashTag
 }
 
 //head of linked list
@@ -116,7 +117,7 @@ func run(first *string) {
 
 	findHashtags(api, *first)
 	fmt.Println("Final Order of Hashtags")
-	printList()
+	printList(*first)
 }
 
 //searches for a specific hashtag in Twitter (real-time), and makes a map for
@@ -129,10 +130,9 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first}, //hashtag that is being searched for
 	})
-
 	defer stream.Stop()
 
-	for time.Since(startRound) < durRound {
+	for true {
 		//fixes time spent looking for each hashtag
 		for v := range stream.C {
 			t, ok := v.(anaconda.Tweet)
@@ -147,12 +147,13 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 			}
 			if time.Since(startRound) > durRound {
 				//time to move to next hashtag
-				nextTag, freq := findMaxHashtag(hashMap, first)
+				nextTag, freq, total := findMaxHashtag(hashMap, first)
 				if nextTag == "" {
 					nextTag = first
 				}
 				stream.Stop()
-				addToList(nextTag, freq)   //add most frequent hashtag to linked list
+				addToList(nextTag, freq, total) //add most frequent hashtag to linked list
+				printList(first)
 				findHashtags(api, nextTag) //recursively calls itself with next hashtag
 			}
 		}
@@ -162,27 +163,38 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 
 //goes through linked list printing the most popular hashtags/order of searching
 //with frequency
-func printList() {
+func printList(first string) {
 	count := 1
+	grammar1, grammar2 := "tweets", "tweets"
 	for temp := startList; temp != nil; temp = temp.next {
-		fmt.Printf("%d.) %s with a frequency of %d in previous search \n", count, temp.tag, temp.freq)
-		count++
+		if temp.prev != nil {
+			prev := temp.prev.tag
+			if temp.freq == 1 {
+				grammar1 = "tweet"
+			}
+			if temp.total == 1 {
+				grammar2 = "tweet"
+			}
+			fmt.Printf("%d.) %d %s had %s of the %d %s that had %s \n", count, temp.freq, grammar1, temp.tag, temp.total, grammar2, prev)
+			count++
+		}
 	}
 }
 
 //adds next hashtag to be searched in linked list
-func addToList(text string, frequency int) {
+func addToList(text string, frequency int, total int) {
 	block := &hashTag{
-		tag:  text,
-		freq: frequency,
-		next: nil,
+		tag:   text,
+		freq:  frequency,
+		total: total,
+		next:  nil,
+		prev:  nil,
 	}
 	var temp *hashTag
 	for temp = startList; temp.next != nil; temp = temp.next {
 	}
 	temp.next = block
 	block.prev = temp
-	printList()
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
@@ -199,16 +211,18 @@ func parseText(text string, hashMap map[string]int) {
 //goes through current hashMap finding the hashtag with the greatest frequency
 //of showing up in posts with the specified hashtag, returning both the most
 //frequent hashtag itself, along with its count/frequency
-func findMaxHashtag(hashMap map[string]int, first string) (string, int) {
+func findMaxHashtag(hashMap map[string]int, first string) (string, int, int) {
 	bestFreq := 0
 	bestStr := ""
+	count := 0
 	for tag := range hashMap {
+		count += hashMap[tag]
 		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && !prev(tag) {
 			bestStr = tag
 			bestFreq = hashMap[tag]
 		}
 	}
-	return bestStr, bestFreq
+	return bestStr, bestFreq, count
 }
 
 //makes sure that the next hashtag to be searched isn't any previous hashtag
