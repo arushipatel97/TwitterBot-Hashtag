@@ -5,6 +5,7 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
@@ -69,7 +70,7 @@ func main() {
 		cli.StringFlag{
 			Name:        "first-search, f",
 			Usage:       "name of first hashtag to search",
-			Value:       "#love",
+			Value:       "#food",
 			Destination: &first,
 		},
 	}
@@ -89,14 +90,15 @@ func run(first *string) {
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
 
 	api.SetLogger(log)
-	findHashtags(api, *first)
+	nextTag := findHashtags(api, *first)
+	fmt.Println(nextTag)
 
 }
 
-func findHashtags(api *anaconda.TwitterApi, first string) {
+func findHashtags(api *anaconda.TwitterApi, first string) string {
 	startTime := time.Now()
 	hashMap := make(map[string]int)
-	dur = time.Second * 5
+	dur = time.Second * 10
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first},
 	})
@@ -110,10 +112,35 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				log.Warningf("received unexpected value of type %T", v)
 				continue
 			}
-			hashMap[t.Text]++
-			fmt.Println(t.Text)
+			parseText(t.Text, hashMap)
+			if time.Since(startTime) > dur {
+				return findMaxHashtag(hashMap)
+			}
 		}
 	}
+	return ""
+}
+
+func parseText(text string, hashMap map[string]int) {
+	parts := strings.Split(text, " ")
+	for _, tag := range parts {
+		if strings.HasPrefix(tag, "#") {
+			hashMap[tag]++
+			fmt.Println(tag)
+		}
+	}
+}
+
+func findMaxHashtag(hashMap map[string]int) string {
+	bestFreq := 0
+	bestStr := ""
+	for tag := range hashMap {
+		if hashMap[tag] > bestFreq {
+			bestStr = tag
+			bestFreq = hashMap[tag]
+		}
+	}
+	return bestStr
 }
 
 type logger struct {
