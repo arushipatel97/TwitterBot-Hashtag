@@ -18,7 +18,12 @@ var (
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &logger{logrus.New()}
+	durRound          = time.Second * 10
+	durProgram        = time.Second * 50
 )
+
+var first string
+var startProgram time.Time
 
 func getenv(name string) string {
 	v := os.Getenv(name)
@@ -28,8 +33,19 @@ func getenv(name string) string {
 	return v
 }
 
-var first string
-var dur = time.Second * 10
+type hashTag struct {
+	tag  string
+	freq int
+	next *hashTag
+	prev *hashTag
+}
+
+var startList = &hashTag{
+	tag:  "",
+	freq: 0,
+	next: nil,
+	prev: nil,
+}
 
 func main() {
 	app := cli.NewApp()
@@ -81,15 +97,18 @@ func run(first *string) {
 	anaconda.SetConsumerKey(consumerKey)
 	anaconda.SetConsumerSecret(consumerSecret)
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
-
 	api.SetLogger(log)
-	findHashtags(api, *first)
 
+	startProgram = time.Now()
+	startList.tag = *first
+
+	findHashtags(api, *first)
+	fmt.Println("Final Order of Hashtags")
+	printList()
 }
 
 func findHashtags(api *anaconda.TwitterApi, first string) {
-	fmt.Println("current", first)
-	startTime := time.Now()
+	startRound := time.Now()
 	hashMap := make(map[string]int)
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first},
@@ -97,7 +116,7 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 
 	defer stream.Stop()
 
-	for time.Since(startTime) < dur {
+	for time.Since(startRound) < durRound {
 		for v := range stream.C {
 			t, ok := v.(anaconda.Tweet)
 			if !ok {
@@ -105,18 +124,43 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				continue
 			}
 			parseText(t.Text, hashMap)
-			if time.Since(startTime) > dur {
-				nextTag := findMaxHashtag(hashMap, first)
+			if time.Since(startProgram) > durProgram {
+				return
+			}
+			if time.Since(startRound) > durRound {
+				nextTag, freq := findMaxHashtag(hashMap, first)
 				if nextTag == "" {
 					nextTag = first
 				}
-				fmt.Println("next", nextTag)
 				stream.Stop()
+				addToList(nextTag, freq)
 				findHashtags(api, nextTag)
 			}
 		}
 	}
 	return
+}
+
+func printList() {
+	count := 1
+	for temp := startList; temp != nil; temp = temp.next {
+		fmt.Printf("%d.) %s with a frequency of %d \n", count, temp.tag, temp.freq)
+		count++
+	}
+}
+
+func addToList(text string, frequency int) {
+	block := &hashTag{
+		tag:  text,
+		freq: frequency,
+		next: nil,
+	}
+	var temp *hashTag
+	for temp = startList; temp.next != nil; temp = temp.next {
+	}
+	temp.next = block
+	block.prev = temp
+	printList()
 }
 
 func parseText(text string, hashMap map[string]int) {
@@ -128,16 +172,26 @@ func parseText(text string, hashMap map[string]int) {
 	}
 }
 
-func findMaxHashtag(hashMap map[string]int, first string) string {
+func findMaxHashtag(hashMap map[string]int, first string) (string, int) {
 	bestFreq := 0
 	bestStr := ""
 	for tag := range hashMap {
-		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) {
+		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && notPrev(tag) {
 			bestStr = tag
 			bestFreq = hashMap[tag]
 		}
 	}
-	return bestStr
+	return bestStr, bestFreq
+}
+
+func notPrev(tag string) bool {
+	var temp *hashTag
+	for temp = startList; temp.next != nil; temp = temp.next {
+	}
+	if temp.prev == nil {
+		return true
+	}
+	return temp.prev.tag != tag
 }
 
 type logger struct {
