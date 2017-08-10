@@ -16,7 +16,7 @@ type HashTag struct {
 
 //PrintList goes through linked list printing the most popular hashtags/order of searching
 //with frequency
-func PrintList(first string) {
+func PrintList() {
 	count := 1
 	for temp := startList; temp != nil; temp = temp.next {
 		grammar1, grammar2 := "tweets", "tweets"

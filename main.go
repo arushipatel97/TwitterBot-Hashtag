@@ -35,12 +35,10 @@ func getenv(name string) string {
 }
 
 //head of linked list
-var startList = &HashTag{
-	tag:  "",
-	freq: 0,
-	next: nil,
-	prev: nil,
-}
+var startList = &HashTag{}
+
+//root of binary Tree
+var root = &HashTagTree{}
 
 //CLI for running without .env file or specifying a different starting word
 //(for Command line)
@@ -106,11 +104,13 @@ func run(first *string) {
 	//stops running all searches after specified time
 	startProgram = time.Now()
 	startList.tag = *first
+	root.tag = *first
 	careAboutPrev = true
 
 	findHashtags(api, *first)
 	fmt.Println("Final Order of Hashtags")
-	PrintList(*first)
+	//PrintList()
+	PrintTreeB()
 }
 
 //searches for a specific hashtag in Twitter (real-time), and makes a map for
@@ -138,7 +138,7 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				return
 			}
 			if time.Since(startRound) > durRound {
-				nextTag := roundCheck(hashMap, stream, api)
+				nextTag := roundCheck(hashMap, stream, first, api)
 				findHashtags(api, nextTag) //recursively calls itself with next hashtag
 				return
 			}
@@ -160,13 +160,15 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 }
 
 //checks time the round of searching for a specific hashtag has been running
-func roundCheck(hashMap map[string]int, stream *anaconda.Stream, api *anaconda.TwitterApi) string {
+func roundCheck(hashMap map[string]int, stream *anaconda.Stream, parent string, api *anaconda.TwitterApi) string {
 	//time to move to next hashtag
-	nextTag, freq, total := findMaxHashtag(hashMap, first)
+	bestTag, bestFreq, secTag, secFreq, total := findMaxHashtag(hashMap, first)
 	stream.Stop()
-	AddToList(nextTag, freq, total) //add most frequent hashtag to linked list
-	PrintList(first)
-	return nextTag
+	AddToTree(bestTag, bestFreq, secTag, secFreq, total, parent)
+	//AddToList(bestTag, bestFreq, total) //add most frequent hashtag to linked list
+	//PrintList()
+	PrintTreeB()
+	return bestTag
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
@@ -183,22 +185,24 @@ func parseText(text string, hashMap map[string]int) {
 //goes through current hashMap finding the hashtag with the greatest frequency
 //of showing up in posts with the specified hashtag, returning both the most
 //frequent hashtag itself, along with its count/frequency
-func findMaxHashtag(hashMap map[string]int, first string) (string, int, int) {
-	bestFreq := 0
-	bestStr := ""
+func findMaxHashtag(hashMap map[string]int, first string) (string, int, string, int, int) {
+	bestFreq, secFreq := 0, 0
+	bestStr, secStr := "", ""
 	count := 0
 	for tag := range hashMap {
 		count += hashMap[tag]
 		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && !matchesPrev(tag) {
-			bestStr = tag
-			bestFreq = hashMap[tag]
+			secFreq, secStr = bestFreq, bestStr
+			bestFreq, bestStr = hashMap[tag], tag
 		}
 	}
 	if bestStr == "" {
-		bestStr = first
-		bestFreq = hashMap[bestStr]
+		bestFreq, bestStr = hashMap[first], first
 	}
-	return bestStr, bestFreq, count
+	if secStr == "" {
+		secFreq, secStr = hashMap[first], first
+	}
+	return bestStr, bestFreq, secStr, secFreq, count
 }
 
 //checks if the next hashtag to be searched matches any previous hashtag
