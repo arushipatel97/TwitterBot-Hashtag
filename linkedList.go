@@ -5,7 +5,7 @@ import (
 	"strings"
 )
 
-//block type for linked list
+//HashTag struct is block type for linked list
 type HashTag struct {
 	tag   string
 	freq  int
@@ -14,12 +14,12 @@ type HashTag struct {
 	prev  *HashTag
 }
 
-//goes through linked list printing the most popular hashtags/order of searching
+//PrintList goes through linked list printing the most popular hashtags/order of searching
 //with frequency
 func PrintList(first string) {
 	count := 1
-	grammar1, grammar2 := "tweets", "tweets"
 	for temp := startList; temp != nil; temp = temp.next {
+		grammar1, grammar2 := "tweets", "tweets"
 		if temp.prev != nil {
 			prev := temp.prev.tag
 			if temp.freq == 1 {
@@ -34,7 +34,7 @@ func PrintList(first string) {
 	}
 }
 
-//adds next hashtag to be searched in linked list
+//AddToList adds next hashtag to be searched in linked list
 func AddToList(text string, frequency int, total int) {
 	block := &HashTag{
 		tag:   text,
@@ -50,6 +50,8 @@ func AddToList(text string, frequency int, total int) {
 	block.prev = temp
 }
 
+//InList checks to see if the given string is already a tag for a block already
+//in the list
 func InList(tag string) bool {
 	var temp *HashTag
 	for temp = startList; temp != nil; temp = temp.next {

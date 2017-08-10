@@ -18,8 +18,8 @@ var (
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
-	durRound          = time.Second * 60
-	durProgram        = time.Minute * 2
+	durRound          = time.Second * 50
+	durProgram        = time.Minute * 5
 )
 
 var first string
@@ -97,6 +97,7 @@ func main() {
 
 //sets up API environment & makes first call to finding initial hashtag
 func run(first *string) {
+	fmt.Println("STARTING RUN")
 	anaconda.SetConsumerKey(consumerKey)
 	anaconda.SetConsumerSecret(consumerSecret)
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
@@ -122,6 +123,7 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 		"track": []string{first}, //hashtag that is being searched for
 	})
 
+	sleepCount := 0
 	defer stream.Stop()
 
 	for time.Since(startProgram) < durProgram {
@@ -136,28 +138,35 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				return
 			}
 			if time.Since(startRound) > durRound {
-				roundCheck(hashMap, stream, api)
+				nextTag := roundCheck(hashMap, stream, api)
+				findHashtags(api, nextTag) //recursively calls itself with next hashtag
+				return
 			}
 		}
 		if time.Since(startProgram) < durProgram {
 			time.Sleep(durRound)
+			sleepCount++
+			fmt.Println(sleepCount)
+			if sleepCount > 1 {
+				run(&first)
+				return
+			}
 			findHashtags(api, first)
-		} else {
 			return
 		}
+		return
 	}
 	return
 }
 
 //checks time the round of searching for a specific hashtag has been running
-func roundCheck(hashMap map[string]int, stream *anaconda.Stream, api *anaconda.TwitterApi) {
+func roundCheck(hashMap map[string]int, stream *anaconda.Stream, api *anaconda.TwitterApi) string {
 	//time to move to next hashtag
 	nextTag, freq, total := findMaxHashtag(hashMap, first)
 	stream.Stop()
 	AddToList(nextTag, freq, total) //add most frequent hashtag to linked list
 	PrintList(first)
-	findHashtags(api, nextTag) //recursively calls itself with next hashtag
-
+	return nextTag
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
