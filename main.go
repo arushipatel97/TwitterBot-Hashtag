@@ -19,7 +19,7 @@ var (
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
-	durRound          = time.Second * 70
+	durRound          = time.Second * 120
 	durProgram        = time.Minute * 5
 )
 
@@ -36,7 +36,7 @@ func getenv(name string) string {
 }
 
 //head of linked list
-var startList = &HashTag{}
+var listHead = &HashTag{}
 
 //root of binary Tree
 var BTree = &Tree{
@@ -108,7 +108,7 @@ func run(first *string) {
 
 	//stops running all searches after specified time
 	startProgram = time.Now()
-	startList.tag = *first
+	listHead.tag = *first
 	BTree.root.tag = *first
 	careAboutPrev = true
 
@@ -126,11 +126,10 @@ func run(first *string) {
 //the other hashtags mentioned in the posts containing the specified hashtag &
 //based on the time has passed
 func findHashtags(api *anaconda.TwitterApi, first string, wg sync.WaitGroup) {
+	wg.Add(1)
 	defer wg.Done()
-	//fmt.Println("searching for", first)
 	startRound := time.Now()
 	hashMap := make(map[string]int)
-	//fmt.Println("Calling Stream")
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first}, //hashtag that is being searched for
 	})
@@ -152,9 +151,7 @@ func findHashtags(api *anaconda.TwitterApi, first string, wg sync.WaitGroup) {
 			if time.Since(startRound) > durRound {
 				bestTag, secTag := roundCheck(hashMap, stream, first, api)
 				fmt.Println("found", bestTag, "&", secTag)
-				wg.Add(1)
 				go findHashtags(api, bestTag, wg) //recursively calls itself with next hashtag
-				wg.Add(1)
 				go findHashtags(api, secTag, wg)
 				return
 			}

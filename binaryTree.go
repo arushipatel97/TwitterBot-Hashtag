@@ -15,44 +15,41 @@ type HashTagTree struct {
 	tag    string
 	freq   int
 	total  int
-	level  int
+	depth  int
 	parent *HashTagTree
 	left   *HashTagTree
 	right  *HashTagTree
 }
 
+//adds first and second most popular hashtags (corresponding nodes to BinaryTree)
 func AddToTree(bestTag string, bestFreq int, secTag string, secFreq int, total int, parent string) {
 	parentNode := Find(parent, BTree.root)
 	BTree.Lock()
 	defer BTree.Unlock()
-	level := parentNode.level + 1
+	depth := parentNode.depth + 1
 	blockRight := &HashTagTree{
 		tag:    bestTag,
 		freq:   bestFreq,
 		total:  total,
-		level:  level,
-		left:   nil,
-		right:  nil,
+		depth:  depth,
 		parent: parentNode,
 	}
 	blockLeft := &HashTagTree{
 		tag:    secTag,
 		freq:   secFreq,
 		total:  total,
-		level:  level,
-		left:   nil,
-		right:  nil,
+		depth:  depth,
 		parent: parentNode,
 	}
 	parentNode.left = blockLeft
 	parentNode.right = blockRight
 }
 
-//adds first and second most popular hashtags (corresponding nodes to BinaryTree)
+//Find looks for specific node in BinaryTree
 func Find(parent string, root *HashTagTree) *HashTagTree {
 	BTree.RLock()
 	defer BTree.RUnlock()
-	found := &HashTagTree{}
+	var found *HashTagTree
 	if root != nil {
 		if root.tag == parent {
 			return root
@@ -66,6 +63,7 @@ func Find(parent string, root *HashTagTree) *HashTagTree {
 	return nil
 }
 
+//Prints all nodes of list, depth-wise
 func PrintTreeB() {
 	// BTree.RLock()
 	// defer BTree.RUnlock()
@@ -84,7 +82,7 @@ func PrintTreeB() {
 		if curr.parent != nil {
 			parent = curr.parent.tag
 		}
-		fmt.Printf("%d.) %d %s had %s of the %d %s that had %s \n", curr.level, curr.freq, grammar1, curr.tag, curr.total, grammar2, parent)
+		fmt.Printf("%d.) %d %s had %s of the %d %s that had %s \n", curr.depth, curr.freq, grammar1, curr.tag, curr.total, grammar2, parent)
 		if curr.left != nil {
 			Enq(queue, curr.left)
 		}
