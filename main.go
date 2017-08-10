@@ -17,9 +17,9 @@ var (
 	consumerSecret    = getenv("TWITTER_CONSUMER_SECRET")
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
-	log               = &logger{logrus.New()}
-	durRound          = time.Second * 10
-	durProgram        = time.Second * 50
+	log               = &Logger{logrus.New()}
+	durRound          = time.Second * 50
+	durProgram        = time.Minute * 5
 )
 
 var first string
@@ -34,16 +34,8 @@ func getenv(name string) string {
 	return v
 }
 
-//block type for linked list
-type hashTag struct {
-	tag  string
-	freq int
-	next *hashTag
-	prev *hashTag
-}
-
 //head of linked list
-var startList = &hashTag{
+var startList = &HashTag{
 	tag:  "",
 	freq: 0,
 	next: nil,
@@ -51,6 +43,7 @@ var startList = &hashTag{
 }
 
 //CLI for running without .env file or specifying a different starting word
+//(for Command line)
 func main() {
 	app := cli.NewApp()
 	app.Name = "twitterbot"
@@ -88,7 +81,7 @@ func main() {
 		},
 		cli.BoolFlag{
 			Name:        "not-prev, n",
-			Usage:       "if you don't want it to search previous hashtag",
+			Usage:       "if you don't want to search any previously searched hashtag",
 			Destination: &careAboutPrev,
 		},
 	}
@@ -104,6 +97,7 @@ func main() {
 
 //sets up API environment & makes first call to finding initial hashtag
 func run(first *string) {
+	fmt.Println("STARTING RUN")
 	anaconda.SetConsumerKey(consumerKey)
 	anaconda.SetConsumerSecret(consumerSecret)
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
@@ -116,13 +110,12 @@ func run(first *string) {
 
 	findHashtags(api, *first)
 	fmt.Println("Final Order of Hashtags")
-	printList()
+	PrintList(*first)
 }
 
 //searches for a specific hashtag in Twitter (real-time), and makes a map for
 //the other hashtags mentioned in the posts containing the specified hashtag &
-//based on the time has passed, will recursively call itself with the new
-//specified hashtag being the one with the greatest frequency in previous map
+//based on the time has passed
 func findHashtags(api *anaconda.TwitterApi, first string) {
 	startRound := time.Now()
 	hashMap := make(map[string]int)
@@ -130,10 +123,10 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 		"track": []string{first}, //hashtag that is being searched for
 	})
 
+	sleepCount := 0
 	defer stream.Stop()
 
-	for time.Since(startRound) < durRound {
-		//fixes time spent looking for each hashtag
+	for time.Since(startProgram) < durProgram {
 		for v := range stream.C {
 			t, ok := v.(anaconda.Tweet)
 			if !ok {
@@ -142,47 +135,38 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 			}
 			parseText(t.Text, hashMap)
 			if time.Since(startProgram) > durProgram {
-				//fixes approximate total time program spends searching for hashtags
 				return
 			}
 			if time.Since(startRound) > durRound {
-				//time to move to next hashtag
-				nextTag, freq := findMaxHashtag(hashMap, first)
-				if nextTag == "" {
-					nextTag = first
-				}
-				stream.Stop()
-				addToList(nextTag, freq)   //add most frequent hashtag to linked list
+				nextTag := roundCheck(hashMap, stream, api)
 				findHashtags(api, nextTag) //recursively calls itself with next hashtag
+				return
 			}
 		}
+		if time.Since(startProgram) < durProgram {
+			time.Sleep(durRound)
+			sleepCount++
+			fmt.Println(sleepCount)
+			if sleepCount > 1 {
+				run(&first)
+				return
+			}
+			findHashtags(api, first)
+			return
+		}
+		return
 	}
 	return
 }
 
-//goes through linked list printing the most popular hashtags/order of searching
-//with frequency
-func printList() {
-	count := 1
-	for temp := startList; temp != nil; temp = temp.next {
-		fmt.Printf("%d.) %s with a frequency of %d in previous search \n", count, temp.tag, temp.freq)
-		count++
-	}
-}
-
-//adds next hashtag to be searched in linked list
-func addToList(text string, frequency int) {
-	block := &hashTag{
-		tag:  text,
-		freq: frequency,
-		next: nil,
-	}
-	var temp *hashTag
-	for temp = startList; temp.next != nil; temp = temp.next {
-	}
-	temp.next = block
-	block.prev = temp
-	printList()
+//checks time the round of searching for a specific hashtag has been running
+func roundCheck(hashMap map[string]int, stream *anaconda.Stream, api *anaconda.TwitterApi) string {
+	//time to move to next hashtag
+	nextTag, freq, total := findMaxHashtag(hashMap, first)
+	stream.Stop()
+	AddToList(nextTag, freq, total) //add most frequent hashtag to linked list
+	PrintList(first)
+	return nextTag
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
@@ -199,39 +183,30 @@ func parseText(text string, hashMap map[string]int) {
 //goes through current hashMap finding the hashtag with the greatest frequency
 //of showing up in posts with the specified hashtag, returning both the most
 //frequent hashtag itself, along with its count/frequency
-func findMaxHashtag(hashMap map[string]int, first string) (string, int) {
+func findMaxHashtag(hashMap map[string]int, first string) (string, int, int) {
 	bestFreq := 0
 	bestStr := ""
+	count := 0
 	for tag := range hashMap {
-		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && !prev(tag) {
+		count += hashMap[tag]
+		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && !matchesPrev(tag) {
 			bestStr = tag
 			bestFreq = hashMap[tag]
 		}
 	}
-	return bestStr, bestFreq
+	if bestStr == "" {
+		bestStr = first
+		bestFreq = hashMap[bestStr]
+	}
+	return bestStr, bestFreq, count
 }
 
-//makes sure that the next hashtag to be searched isn't any previous hashtag
-//that was searched to prevent just going back & forth
+//checks if the next hashtag to be searched matches any previous hashtag
+//that was searched -- to prevent just going back & forth
 //(this is an optional parameter, based on careAboutPrev)
-func prev(tag string) bool {
+func matchesPrev(tag string) bool {
 	if !careAboutPrev {
 		return false
 	}
-	var temp *hashTag
-	for temp = startList; temp.next != nil; temp = temp.next {
-		if strings.EqualFold(tag, temp.tag) {
-			return true
-		}
-	}
-	return false
+	return InList(tag)
 }
-
-type logger struct {
-	*logrus.Logger
-}
-
-func (log *logger) Critical(args ...interface{})                 { log.Error(args...) }
-func (log *logger) Criticalf(format string, args ...interface{}) { log.Errorf(format, args...) }
-func (log *logger) Notice(args ...interface{})                   { log.Info(args...) }
-func (log *logger) Noticef(format string, args ...interface{})   { log.Infof(format, args...) }
