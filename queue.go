@@ -31,15 +31,24 @@ func Deq(queue *Queue) *HashTagTree {
 		queue.head++
 	}
 	for i := queue.head; i < queue.tail; i++ {
-		queue.buffer[queue.head-i] = queue.buffer[i]
+		queue.buffer[i-queue.head] = queue.buffer[i]
 	}
+
 	return node
 }
 
 func resize(queue *Queue) {
-	temp := make([]HashTagTree, (queue.tail - queue.head), 2*queue.maxLen)
-	for i := queue.head; i < queue.tail; i++ {
-		temp[queue.head-i] = queue.buffer[i]
+	var temp []HashTagTree
+	if queue.tail-queue.head == queue.maxLen {
+		temp = make([]HashTagTree, (queue.tail - queue.head), 2*queue.maxLen)
+		for i := queue.head; i < queue.tail; i++ {
+			temp[i-queue.head] = queue.buffer[i]
+		}
+	} else {
+		temp = make([]HashTagTree, (queue.tail - queue.head), queue.maxLen/2)
+		for i := queue.head; i < queue.tail; i++ {
+			temp[i-queue.head] = queue.buffer[i]
+		}
 	}
 	queue.buffer = temp
 }

@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
@@ -18,7 +19,7 @@ var (
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
-	durRound          = time.Second * 50
+	durRound          = time.Second * 70
 	durProgram        = time.Minute * 5
 )
 
@@ -38,7 +39,9 @@ func getenv(name string) string {
 var startList = &HashTag{}
 
 //root of binary Tree
-var root = &HashTagTree{}
+var BTree = &Tree{
+	root: &HashTagTree{},
+}
 
 //CLI for running without .env file or specifying a different starting word
 //(for Command line)
@@ -101,13 +104,19 @@ func run(first *string) {
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
 	api.SetLogger(log)
 
+	var wg sync.WaitGroup
+
 	//stops running all searches after specified time
 	startProgram = time.Now()
 	startList.tag = *first
-	root.tag = *first
+	BTree.root.tag = *first
 	careAboutPrev = true
 
-	findHashtags(api, *first)
+	wg.Add(1)
+	findHashtags(api, *first, wg)
+	go func() {
+		wg.Wait()
+	}()
 	fmt.Println("Final Order of Hashtags")
 	//PrintList()
 	PrintTreeB()
@@ -116,9 +125,12 @@ func run(first *string) {
 //searches for a specific hashtag in Twitter (real-time), and makes a map for
 //the other hashtags mentioned in the posts containing the specified hashtag &
 //based on the time has passed
-func findHashtags(api *anaconda.TwitterApi, first string) {
+func findHashtags(api *anaconda.TwitterApi, first string, wg sync.WaitGroup) {
+	defer wg.Done()
+	//fmt.Println("searching for", first)
 	startRound := time.Now()
 	hashMap := make(map[string]int)
+	//fmt.Println("Calling Stream")
 	stream := api.PublicStreamFilter(url.Values{
 		"track": []string{first}, //hashtag that is being searched for
 	})
@@ -138,8 +150,12 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				return
 			}
 			if time.Since(startRound) > durRound {
-				nextTag := roundCheck(hashMap, stream, first, api)
-				findHashtags(api, nextTag) //recursively calls itself with next hashtag
+				bestTag, secTag := roundCheck(hashMap, stream, first, api)
+				fmt.Println("found", bestTag, "&", secTag)
+				wg.Add(1)
+				go findHashtags(api, bestTag, wg) //recursively calls itself with next hashtag
+				wg.Add(1)
+				go findHashtags(api, secTag, wg)
 				return
 			}
 		}
@@ -151,7 +167,6 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 				run(&first)
 				return
 			}
-			findHashtags(api, first)
 			return
 		}
 		return
@@ -160,7 +175,7 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 }
 
 //checks time the round of searching for a specific hashtag has been running
-func roundCheck(hashMap map[string]int, stream *anaconda.Stream, parent string, api *anaconda.TwitterApi) string {
+func roundCheck(hashMap map[string]int, stream *anaconda.Stream, parent string, api *anaconda.TwitterApi) (string, string) {
 	//time to move to next hashtag
 	bestTag, bestFreq, secTag, secFreq, total := findMaxHashtag(hashMap, first)
 	stream.Stop()
@@ -168,7 +183,7 @@ func roundCheck(hashMap map[string]int, stream *anaconda.Stream, parent string, 
 	//AddToList(bestTag, bestFreq, total) //add most frequent hashtag to linked list
 	//PrintList()
 	PrintTreeB()
-	return bestTag
+	return bestTag, secTag
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
