@@ -1,5 +1,6 @@
 package main
 
+//Queue used for Breadth for search/print
 type Queue struct {
 	buffer []HashTagTree
 	head   int
@@ -7,6 +8,7 @@ type Queue struct {
 	maxLen int
 }
 
+//New returns a new Queu
 func New() *Queue {
 	buffer := make([]HashTagTree, 64, 64)
 	new := &Queue{
@@ -16,14 +18,18 @@ func New() *Queue {
 	return new
 }
 
+//Enq (Pushess) element onto end queue (end of list)
 func Enq(queue *Queue, node *HashTagTree) {
 	if (queue.tail - queue.head) == queue.maxLen {
+		//resize if element can't fit
 		resize(queue)
 	}
 	queue.buffer[queue.tail] = *node
 	queue.tail++
 }
 
+//Deq (Pops) off first in element of queue (front of list)
+//Moves elements forward in list based on getting rid of one
 func Deq(queue *Queue) *HashTagTree {
 	node := &HashTagTree{}
 	if (queue.tail - queue.head) > 0 {
@@ -31,6 +37,7 @@ func Deq(queue *Queue) *HashTagTree {
 		queue.head++
 	}
 	for i := queue.head; i < queue.tail; i++ {
+		//move everything forward once dequed
 		queue.buffer[i-queue.head] = queue.buffer[i]
 	}
 
@@ -53,6 +60,7 @@ func resize(queue *Queue) {
 	queue.buffer = temp
 }
 
+//IsEmpty checks if the queu contians elements or not
 func IsEmpty(queue *Queue) bool {
 	len := queue.tail - queue.head
 	if len == 0 {
