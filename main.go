@@ -20,7 +20,7 @@ var (
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
 	durRound          = time.Second * 60 * 5
-	durProgram        = time.Minute * 20
+	durProgram        = time.Minute * 60
 )
 
 var first string
