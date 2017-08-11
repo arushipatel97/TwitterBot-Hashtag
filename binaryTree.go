@@ -26,6 +26,9 @@ func AddToTree(bestTag string, bestFreq int, secTag string, secFreq int, total i
 	parentNode := Find(parent, BTree.root)
 	BTree.Lock()
 	defer BTree.Unlock()
+	if parentNode == nil {
+		fmt.Println("ERROR")
+	}
 	depth := parentNode.depth + 1
 	blockRight := &HashTagTree{
 		tag:    bestTag,
@@ -63,6 +66,15 @@ func Find(parent string, root *HashTagTree) *HashTagTree {
 	return nil
 }
 
+type depthMap struct {
+	dMap map[int]int
+	sync.RWMutex
+}
+
+var dm = &depthMap{
+	dMap: make(map[int]int),
+}
+
 //Prints all nodes of list, depth-wise
 func PrintTreeB() {
 	// BTree.RLock()
@@ -82,7 +94,16 @@ func PrintTreeB() {
 		if curr.parent != nil {
 			parent = curr.parent.tag
 		}
-		fmt.Printf("%d.) %d %s had %s of the %d %s that had %s \n", curr.depth, curr.freq, grammar1, curr.tag, curr.total, grammar2, parent)
+		fmt.Printf("%d.) %d %s had %s of the %d %s that had %s     ", curr.depth, curr.freq, grammar1, curr.tag, curr.total, grammar2, parent)
+		dm.RLock()
+		_, ok := dm.dMap[curr.depth]
+		dm.RUnlock()
+		if !ok {
+			fmt.Println()
+		}
+		dm.Lock()
+		dm.dMap[curr.depth] = 1
+		dm.Unlock()
 		if curr.left != nil {
 			Enq(queue, curr.left)
 		}
@@ -91,3 +112,5 @@ func PrintTreeB() {
 		}
 	}
 }
+
+//func printFormatted()

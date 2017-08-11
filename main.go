@@ -20,7 +20,7 @@ var (
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
 	durRound          = time.Second * 120
-	durProgram        = time.Minute * 5
+	durProgram        = time.Minute * 10
 )
 
 var first string
@@ -98,7 +98,6 @@ func main() {
 
 //sets up API environment & makes first call to finding initial hashtag
 func run(first *string) {
-	fmt.Println("STARTING RUN")
 	anaconda.SetConsumerKey(consumerKey)
 	anaconda.SetConsumerSecret(consumerSecret)
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
@@ -146,6 +145,7 @@ func findHashtags(api *anaconda.TwitterApi, first string, wg sync.WaitGroup) {
 			}
 			parseText(t.Text, hashMap)
 			if time.Since(startProgram) > durProgram {
+				fmt.Println("returned from inside stream")
 				return
 			}
 			if time.Since(startRound) > durRound {
@@ -153,21 +153,23 @@ func findHashtags(api *anaconda.TwitterApi, first string, wg sync.WaitGroup) {
 				fmt.Println("found", bestTag, "&", secTag)
 				go findHashtags(api, bestTag, wg) //recursively calls itself with next hashtag
 				go findHashtags(api, secTag, wg)
-				return
 			}
 		}
 		if time.Since(startProgram) < durProgram {
 			time.Sleep(durRound)
 			sleepCount++
-			fmt.Println(sleepCount)
 			if sleepCount > 1 {
 				run(&first)
-				return
 			}
+			go findHashtags(api, first, wg)
+		} else {
+			fmt.Println(time.Since(startProgram))
+			fmt.Println("time up outisde")
 			return
 		}
-		return
 	}
+	fmt.Println(time.Since(startProgram))
+	fmt.Println("most outer time up")
 	return
 }
 
@@ -224,5 +226,5 @@ func matchesPrev(tag string) bool {
 	if !careAboutPrev {
 		return false
 	}
-	return InList(tag)
+	return (InList(tag) || (Find(tag, BTree.root) != nil))
 }
