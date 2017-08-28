@@ -5,6 +5,7 @@ import (
 	"net/url"
 	"os"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/ChimeraCoder/anaconda"
@@ -18,12 +19,12 @@ var (
 	accessToken       = getenv("TWITTER_ACCESS_TOKEN")
 	accessTokenSecret = getenv("TWITTER_ACCESS_TOKEN_SECRET")
 	log               = &Logger{logrus.New()}
-	durRound          = time.Second * 50
-	durProgram        = time.Minute * 5
+	durRound          = time.Second * 60 * 5
+	durProgram        = time.Minute * 60
 )
 
 var first string
-var careAboutPrev bool
+var careAboutPrev, linkedList bool
 var startProgram time.Time
 
 func getenv(name string) string {
@@ -35,11 +36,11 @@ func getenv(name string) string {
 }
 
 //head of linked list
-var startList = &HashTag{
-	tag:  "",
-	freq: 0,
-	next: nil,
-	prev: nil,
+var listHead = &HashTag{}
+
+//BTree golabal root of binary Tree
+var BTree = &Tree{
+	root: &HashTagTree{},
 }
 
 //CLI for running without .env file or specifying a different starting word
@@ -76,7 +77,7 @@ func main() {
 		cli.StringFlag{
 			Name:        "first-search, f",
 			Usage:       "name of first hashtag to search",
-			Value:       "#food",
+			Value:       "#foodie",
 			Destination: &first,
 		},
 		cli.BoolFlag{
@@ -84,9 +85,14 @@ func main() {
 			Usage:       "if you don't want to search any previously searched hashtag",
 			Destination: &careAboutPrev,
 		},
+		cli.BoolFlag{
+			Name:        "linkedList implementation, l",
+			Usage:       "defaults to binary tree implementation",
+			Destination: &linkedList,
+		},
 	}
 	app.Action = func(c *cli.Context) error {
-		run(&first)
+		run()
 		return nil
 	}
 	err := app.Run(os.Args)
@@ -96,31 +102,45 @@ func main() {
 }
 
 //sets up API environment & makes first call to finding initial hashtag
-func run(first *string) {
-	fmt.Println("STARTING RUN")
+func run() {
 	anaconda.SetConsumerKey(consumerKey)
 	anaconda.SetConsumerSecret(consumerSecret)
 	api := anaconda.NewTwitterApi(accessToken, accessTokenSecret)
 	api.SetLogger(log)
 
+	var wg sync.WaitGroup
+
 	//stops running all searches after specified time
 	startProgram = time.Now()
-	startList.tag = *first
+	listHead.tag = first
+	BTree.root.tag = first
 	careAboutPrev = true
 
-	findHashtags(api, *first)
-	fmt.Println("Final Order of Hashtags")
-	PrintList(*first)
+	if linkedList {
+		findHashtags(api, first, wg)
+		fmt.Println("Final Order of Hashtags")
+		PrintList()
+	} else {
+		wg.Add(1)
+		findHashtags(api, first, wg)
+		go func() {
+			wg.Wait()
+		}()
+		fmt.Println("Final Order of Hashtags")
+		PrintTreeB()
+	}
 }
 
 //searches for a specific hashtag in Twitter (real-time), and makes a map for
 //the other hashtags mentioned in the posts containing the specified hashtag &
 //based on the time has passed
-func findHashtags(api *anaconda.TwitterApi, first string) {
+func findHashtags(api *anaconda.TwitterApi, search string, wg sync.WaitGroup) {
+	wg.Add(1)
+	defer wg.Done()
 	startRound := time.Now()
 	hashMap := make(map[string]int)
 	stream := api.PublicStreamFilter(url.Values{
-		"track": []string{first}, //hashtag that is being searched for
+		"track": []string{search}, //hashtag that is being searched for
 	})
 
 	sleepCount := 0
@@ -135,38 +155,59 @@ func findHashtags(api *anaconda.TwitterApi, first string) {
 			}
 			parseText(t.Text, hashMap)
 			if time.Since(startProgram) > durProgram {
+				fmt.Println("returned from inside stream")
 				return
 			}
 			if time.Since(startRound) > durRound {
-				nextTag := roundCheck(hashMap, stream, api)
-				findHashtags(api, nextTag) //recursively calls itself with next hashtag
-				return
+				bestTag, secTag := roundCheck(hashMap, stream, search, api, search)
+				if linkedList {
+					findHashtags(api, bestTag, wg)
+				} else {
+					fmt.Println("found", bestTag, "&", secTag)
+					go findHashtags(api, bestTag, wg) //recursively calls itself with next hashtag
+					go findHashtags(api, secTag, wg)
+				}
 			}
 		}
 		if time.Since(startProgram) < durProgram {
+			fmt.Println("time before sleeping", time.Now())
 			time.Sleep(durRound)
+			fmt.Println("time after sleeping", time.Now())
 			sleepCount++
 			fmt.Println(sleepCount)
-			if sleepCount > 1 {
-				run(&first)
-				return
+			if sleepCount > 3 {
+				run()
 			}
-			findHashtags(api, first)
+			if linkedList {
+				findHashtags(api, search, wg)
+			} else {
+				go findHashtags(api, search, wg)
+			}
+		} else {
+			fmt.Println(time.Since(startProgram))
+			fmt.Println("time up outisde")
 			return
 		}
-		return
 	}
+	fmt.Println(time.Since(startProgram))
+	fmt.Println("most outer time up")
 	return
 }
 
 //checks time the round of searching for a specific hashtag has been running
-func roundCheck(hashMap map[string]int, stream *anaconda.Stream, api *anaconda.TwitterApi) string {
+func roundCheck(hashMap map[string]int, stream *anaconda.Stream, parent string, api *anaconda.TwitterApi, search string) (string, string) {
 	//time to move to next hashtag
-	nextTag, freq, total := findMaxHashtag(hashMap, first)
+	bestTag, bestFreq, secTag, secFreq, total := findMaxHashtag(hashMap, search)
 	stream.Stop()
-	AddToList(nextTag, freq, total) //add most frequent hashtag to linked list
-	PrintList(first)
-	return nextTag
+	if linkedList {
+		AddToList(bestTag, bestFreq, total) //add most frequent hashtag to linked list
+		PrintList()
+	} else {
+		fmt.Println("found:", bestTag, "&", secTag, "from", search)
+		AddToTree(bestTag, bestFreq, secTag, secFreq, total, parent)
+		PrintTreeB()
+	}
+	return bestTag, secTag
 }
 
 //parses tweets found with given hashtag to find other hashtags mentioned, &
@@ -183,22 +224,26 @@ func parseText(text string, hashMap map[string]int) {
 //goes through current hashMap finding the hashtag with the greatest frequency
 //of showing up in posts with the specified hashtag, returning both the most
 //frequent hashtag itself, along with its count/frequency
-func findMaxHashtag(hashMap map[string]int, first string) (string, int, int) {
-	bestFreq := 0
-	bestStr := ""
+func findMaxHashtag(hashMap map[string]int, search string) (string, int, string, int, int) {
+	bestFreq, secFreq := 0, 0
+	bestStr, secStr := "", ""
 	count := 0
-	for tag := range hashMap {
+	tag := ""
+	for tag = range hashMap {
 		count += hashMap[tag]
-		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, first) && !matchesPrev(tag) {
-			bestStr = tag
-			bestFreq = hashMap[tag]
+		if hashMap[tag] > bestFreq && !strings.EqualFold(tag, search) && !matchesPrev(tag) {
+			secFreq, secStr = bestFreq, bestStr
+			bestFreq, bestStr = hashMap[tag], tag
 		}
 	}
 	if bestStr == "" {
-		bestStr = first
-		bestFreq = hashMap[bestStr]
+		bestFreq, bestStr = count, search
 	}
-	return bestStr, bestFreq, count
+	if secStr == "" {
+		secFreq, secStr = count, search
+	}
+	fmt.Println("best", bestStr, "bool", strings.EqualFold(tag, bestStr))
+	return bestStr, bestFreq, secStr, secFreq, count
 }
 
 //checks if the next hashtag to be searched matches any previous hashtag
@@ -208,5 +253,5 @@ func matchesPrev(tag string) bool {
 	if !careAboutPrev {
 		return false
 	}
-	return InList(tag)
+	return (InList(tag) || (Find(tag, BTree.root) != nil))
 }

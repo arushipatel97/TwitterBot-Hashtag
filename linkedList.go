@@ -16,9 +16,9 @@ type HashTag struct {
 
 //PrintList goes through linked list printing the most popular hashtags/order of searching
 //with frequency
-func PrintList(first string) {
+func PrintList() {
 	count := 1
-	for temp := startList; temp != nil; temp = temp.next {
+	for temp := listHead; temp != nil; temp = temp.next {
 		grammar1, grammar2 := "tweets", "tweets"
 		if temp.prev != nil {
 			prev := temp.prev.tag
@@ -44,7 +44,7 @@ func AddToList(text string, frequency int, total int) {
 		prev:  nil,
 	}
 	var temp *HashTag
-	for temp = startList; temp.next != nil; temp = temp.next {
+	for temp = listHead; temp.next != nil; temp = temp.next {
 	}
 	temp.next = block
 	block.prev = temp
@@ -54,7 +54,7 @@ func AddToList(text string, frequency int, total int) {
 //in the list
 func InList(tag string) bool {
 	var temp *HashTag
-	for temp = startList; temp != nil; temp = temp.next {
+	for temp = listHead; temp != nil; temp = temp.next {
 		if strings.EqualFold(tag, temp.tag) { //case insensitive check
 			return true
 		}
